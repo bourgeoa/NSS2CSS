@@ -1,5 +1,7 @@
-#!/usr/bin/env node --no-warnings
+#!/usr/bin/env node
+// #!/usr/bin/env node --no-warnings
 // ©2023 Ruben Verborgh – MIT License
+// 2024-11 Alain Bourgeois updated to CSS V7
 
 import assert from 'node:assert';
 import { resolve } from 'node:path';
@@ -123,7 +125,7 @@ async function updateAccount(account, internalPath) {
     checks.read = true;
 
     // Update the password section
-    const passwordSections = Object.values(accountConfig['**password**']);
+    const passwordSections = Object.values(accountConfig['payload']['**password**']);
     assert.equal(passwordSections.length, 1);
     assert(account.hashedPassword.startsWith(passwordHashStart));
     assert(passwordSections[0].password.startsWith(passwordHashStart));
@@ -132,7 +134,7 @@ async function updateAccount(account, internalPath) {
 
     // Update the WebID section
     if (account.webId) {
-      const webIdSections = Object.values(accountConfig['**webIdLink**']);
+      const webIdSections = Object.values(accountConfig['payload']['**webIdLink**']);
       assert.equal(webIdSections.length, 1);
       assert(webIdSections[0].webId.startsWith('http'));
       assert(account.webId.startsWith('http'));
@@ -196,7 +198,7 @@ async function testPod({ username }, cssUrl) {
 async function getAccountControls(cssUrl) {
   try {
     const body = await cssApiGet(new URL('.account/', cssUrl));
-    assert.equal(body.version, '0.5', 'Unsupported CSS account API');
+    // assert.equal(body.version, '0.5', 'Unsupported CSS account API');
     return body.controls;
   }
   catch (cause) {
@@ -225,7 +227,7 @@ async function cssApiFetch(url, options = {}, authorization = '') {
     headers: {
       ...options.headers,
       accept: 'application/json',
-      authorization: `CSS-Account-Cookie ${authorization}`,
+      authorization: `CSS-Account-Token ${authorization}`,
     },
   });
   const json = await response.json();
