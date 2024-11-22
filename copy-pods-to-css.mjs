@@ -188,6 +188,11 @@ async function updateOidcIssuer ({ username }, cssDataPath, cssUrl) {
       await writeFile(path, newProfile)
       checks.oidcIssuer = true
     }
+    if (profile.includes(`oidcIssuer> <${cssUrl.slice(0, -1)}>`)) {
+      const newProfile = profile.replace(new RegExp(`oidcIssuer> <${cssUrl.slice(0, -1)}>`), `oidcIssuer> <${cssUrl}>`)
+      await writeFile(path, newProfile)
+      checks.oidcIssuer = true
+    }
   }
   finally {
       assert(printChecks(username, checks), 'oidcIssuer update failed');
