@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // #!/usr/bin/env node --no-warnings
 // ©2023 Ruben Verborgh – MIT License
-// 2024-11 Alain Bourgeois updated to CSS V7
 
 import assert from 'node:assert';
 import { resolve } from 'node:path';
@@ -53,7 +52,10 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   print(`4️⃣  CSS: Copy ${accounts.length} pod contents on disk`);
   await asyncMap(copyPodFiles, accounts, nss.hostname, nss.dataPath, cssDataPath);
 
-  print(`5️⃣  CSS: Check ${accounts.length} pods for known resources`);
+  print(`5️⃣  CSS: Copy ${accounts.length} WebID oidcIssuer on disk`);
+  await asyncMap(updateOidcIssuer, accounts, cssDataPath, cssUrl);
+
+  print(`6️⃣  CSS: Check ${accounts.length} pods for known resources`);
   await asyncMap(testPod, accounts, cssUrl);
 }
 
@@ -168,11 +170,34 @@ async function copyPodFiles({ username }, hostname, nssDataPath, cssDataPath) {
     // Copy new contents from the source to the destination
     await execFile('cp', ['-a', '--', source, destination]);
     checks.copy = true;
+
   }
   finally {
     assert(printChecks(username, checks), 'Pod copy failed');
   }
 }
+
+// update oidcIssuer in webID document (add end '/')
+async function updateOidcIssuer ({ username }, cssDataPath, cssUrl) {
+  const checks = { oidcIssuer: false };
+  const path = resolve(cssDataPath, username, 'profile/card$.ttl')
+  try {
+    var profile = await readFile(path, 'utf8')
+    if (profile.includes(`solid:oidcIssuer <${cssUrl.slice(0, -1)}>`)) {
+      const newProfile = profile.replace(new RegExp(`solid:oidcIssuer <${cssUrl.slice(0, -1)}>`), `solid:oidcIssuer <${cssUrl}>`)
+      await writeFile(path, newProfile)
+      checks.oidcIssuer = true
+    }
+    if (profile.includes(`oidcIssuer> <${cssUrl.slice(0, -1)}>`)) {
+      const newProfile = profile.replace(new RegExp(`oidcIssuer> <${cssUrl.slice(0, -1)}>`), `oidcIssuer> <${cssUrl}>`)
+      await writeFile(path, newProfile)
+      checks.oidcIssuer = true
+    }
+  }
+  finally {
+      assert(printChecks(username, checks), 'oidcIssuer update failed');
+    }
+  }
 
 // Tests the given pod by trying to access typical resources
 async function testPod({ username }, cssUrl) {
@@ -181,7 +206,6 @@ async function testPod({ username }, cssUrl) {
   // Create URL for pod
   const podUrl = new URL(cssUrl);
   podUrl.hostname = `${username}.${podUrl.hostname}`;
-
   try {
     // Check presence of resources available in typical NSS pods
     const profile = await localFetch(new URL('/profile/card', podUrl));
@@ -243,8 +267,8 @@ function localFetch(url, init = {}) {
   // The `pod.localhost` pattern is common within NSS and CSS,
   // but Node.js does not resolve this well by default
   const host = url.host;
-  if (url.hostname.endsWith('.localhost'))
-    url.hostname = 'localhost';
+  /* if (url.hostname.endsWith('.localhost'))
+    url.hostname = 'localhost'; */
 
   return fetch(url, { ...init, headers: { host } });
 }
