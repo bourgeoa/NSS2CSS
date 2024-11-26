@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import * as childProcess from 'node:child_process';
 import { lstat, readdir, readFile, writeFile } from 'node:fs/promises';
+// import fs from 'node:fs'
 
 const execFile = promisify(childProcess.execFile);
 
@@ -52,10 +53,13 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   print(`4️⃣  CSS: Copy ${accounts.length} pod contents on disk`);
   await asyncMap(copyPodFiles, accounts, nss.hostname, nss.dataPath, cssDataPath);
 
-  print(`5️⃣  CSS: Copy ${accounts.length} WebID oidcIssuer on disk`);
+  print(`5️⃣  CSS: Update ${accounts.length} WebID oidcIssuer on disk`);
   await asyncMap(updateOidcIssuer, accounts, cssDataPath, cssUrl);
 
-  print(`6️⃣  CSS: Check ${accounts.length} pods for known resources`);
+  print(`6️⃣  CSS: Update ${accounts.length} pod folders /.acl on disk`);
+  await asyncMap(updateAcl, accounts, cssDataPath)
+
+  print(`7️⃣  CSS: Check ${accounts.length} pods for known resources`);
   await asyncMap(testPod, accounts, cssUrl);
 }
 
@@ -177,7 +181,7 @@ async function copyPodFiles({ username }, hostname, nssDataPath, cssDataPath) {
   }
 }
 
-// update oidcIssuer in webID document (add end '/')
+// for CSS update oidcIssuer in webID document (add end '/')
 async function updateOidcIssuer ({ username }, cssDataPath, cssUrl) {
   const checks = { oidcIssuer: false };
   const path = resolve(cssDataPath, username, 'profile/card$.ttl')
@@ -188,16 +192,57 @@ async function updateOidcIssuer ({ username }, cssDataPath, cssUrl) {
       await writeFile(path, newProfile)
       checks.oidcIssuer = true
     }
-    if (profile.includes(`oidcIssuer> <${cssUrl.slice(0, -1)}>`)) {
-      const newProfile = profile.replace(new RegExp(`oidcIssuer> <${cssUrl.slice(0, -1)}>`), `oidcIssuer> <${cssUrl}>`)
-      await writeFile(path, newProfile)
-      checks.oidcIssuer = true
-    }
   }
   finally {
       assert(printChecks(username, checks), 'oidcIssuer update failed');
     }
   }
+
+// for CSS replace deprecated acl:defaultForNew by acl:default in folders/.acl
+async function updateAcl ({ username }, cssDataPath) {
+  // const checks = { default: false };
+  const pathToPod = resolve(cssDataPath, username)
+  const source = 'acl:defaultForNew'
+  const target = 'acl:default'
+  const aclFile = '.acl'
+  let count = 0
+
+  try {
+    // recursively replace string in folder/.acl
+    await fromDir(pathToPod, aclFile, async function(filename) {
+      const content = (await readFile(filename)).toString()
+      const patt = new RegExp(source)
+      if (patt.test(content)) {
+        count += 1
+        print(filename)
+        // update file
+        const newContent = content.replace(new RegExp(source, 'g'), target)
+        await writeFile(filename, newContent)
+      }
+    })
+  }
+  finally {
+    assert(print(username + ' ' + count), 'acl:default update failed');
+  }
+}
+
+// parse recursively all files matching filter and apply callback
+async function fromDir(startPath, filter, callback) {
+  /* if (!fs.existsSync(startPath)) {
+      console.log("no dir ",startPath)
+      return
+  } */
+
+  var files = await readdir(startPath)
+  for (var i = 0; i < files.length; i++) {
+      var filename = resolve(startPath, files[i])
+      var stat = await lstat(filename)
+      if (stat.isDirectory()) {
+          fromDir(filename,filter,callback) //recurse
+      }
+      else if (filter === files[i]) callback(filename)
+  }
+}
 
 // Tests the given pod by trying to access typical resources
 async function testPod({ username }, cssUrl) {
@@ -267,8 +312,8 @@ function localFetch(url, init = {}) {
   // The `pod.localhost` pattern is common within NSS and CSS,
   // but Node.js does not resolve this well by default
   const host = url.host;
-  /* if (url.hostname.endsWith('.localhost'))
-    url.hostname = 'localhost'; */
+  if (url.hostname.endsWith('.localhost'))
+    url.hostname = 'localhost';
 
   return fetch(url, { ...init, headers: { host } });
 }
